@@ -17,7 +17,17 @@ from routers import auth, shipments, disruptions, notifications, admin, chat, ge
 from services.risk_engine import scan_all
 
 load_dotenv()
-FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+
+# Build CORS origins list from env (comma-separated) + always include localhost
+_cors_env = os.getenv("CORS_ORIGINS", "")
+_cors_list = [u.strip() for u in _cors_env.split(",") if u.strip()]
+ALLOWED_ORIGINS = list({
+    *_cors_list,
+    "http://localhost:3000",
+    "http://127.0.0.1:3000",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+})
 
 
 async def run_risk_scan():
@@ -58,20 +68,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow all local dev origins
-_ORIGINS = list({
-    FRONTEND_URL,
-    "http://localhost:3000",
-    "http://127.0.0.1:3000",
-    "http://localhost:5173",
-    "http://127.0.0.1:5173",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-})
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_ORIGINS,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization", "Accept", "Origin", "X-Requested-With"],
@@ -91,6 +90,7 @@ def root():
     return {"service": "ChainShield API", "version": "1.0.0", "status": "running", "docs": "/docs"}
 
 
+@app.get("/health")
 @app.get("/api/health")
 def health():
     return {"status": "ok"}

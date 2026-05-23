@@ -88,8 +88,22 @@ def delete_user(
         raise HTTPException(400, "Cannot delete your own account.")
     if user.email == _PROTECTED_EMAIL:
         raise HTTPException(403, "The system admin account cannot be deleted.")
+
+    # Log before deleting (so we still have the user object)
     _log(db, current_user, "DELETE_USER", "User", user_id,
          f"Deleted account: {user.name} ({user.email}, {user.role})")
+
+    # Remove all linked records first to avoid FK constraint errors
+    db.query(models.Notification).filter(models.Notification.user_id == user_id).delete()
+    db.query(models.ActivityLog).filter(models.ActivityLog.user_id == user_id).delete()
+    db.query(models.Message).filter(
+        (models.Message.sender_id == user_id) | (models.Message.receiver_id == user_id)
+    ).delete(synchronize_session=False)
+
+    # Un-assign any shipments so they don't become orphaned
+    for ship in db.query(models.Shipment).filter(models.Shipment.operator_id == user_id).all():
+        ship.operator_id = None
+
     db.delete(user)
     db.commit()
     return {"ok": True}

@@ -1,7 +1,7 @@
 """
 Seed the database on first run.
-Creates ONE admin account and populates lookup tables.
-Safe to call multiple times — skips if any user already exists.
+Creates demo accounts and populates lookup tables.
+Safe to call multiple times — skips if data already exists.
 """
 import uuid
 import random
@@ -18,13 +18,41 @@ def _gen_chat_number(db) -> str:
     return "10000"
 
 
+# Demo accounts for the Solution Challenge submission
+DEMO_USERS = [
+    dict(name="Admin User",     email="admin@chainshield.com",   password="demo1234", role="admin",    operator_type=None,        company="ChainShield HQ"),
+    dict(name="Manager User",   email="manager@chainshield.com", password="demo1234", role="manager",  operator_type=None,        company="ChainShield HQ"),
+    dict(name="Ship Captain",   email="captain@chainshield.com", password="demo1234", role="operator", operator_type="Captain",   company="OceanFreight Ltd"),
+    dict(name="Air Pilot",      email="pilot@chainshield.com",   password="demo1234", role="operator", operator_type="Pilot",     company="SkyLogistics Inc"),
+    dict(name="Truck Driver",   email="driver@chainshield.com",  password="demo1234", role="operator", operator_type="Driver",    company="RoadHaul Co"),
+    dict(name="Loco Pilot",     email="loco@chainshield.com",    password="demo1234", role="operator", operator_type="Loco Pilot", company="RailExpress Ltd"),
+]
+
+
 def seed(db: Session):
     if db.query(models.User).count() > 0:
+        # Ensure all demo accounts exist even if DB was previously seeded
+        _ensure_demo_accounts(db)
         return
 
     print("[ChainShield] Seeding initial data...")
 
-    # Single admin account
+    # Create all demo accounts
+    for u in DEMO_USERS:
+        user = models.User(
+            id=f"USR-{uuid.uuid4().hex[:8].upper()}",
+            name=u["name"],
+            email=u["email"],
+            password_hash=hash_password(u["password"]),
+            role=u["role"],
+            operator_type=u["operator_type"],
+            company=u["company"],
+            active=True,
+            chat_number=_gen_chat_number(db),
+        )
+        db.add(user)
+
+    # Legacy personal admin (kept for backwards compatibility)
     admin = models.User(
         id=f"USR-{uuid.uuid4().hex[:8].upper()}",
         name="Bhavik Visani",
@@ -73,4 +101,30 @@ def seed(db: Session):
     db.add_all([models.CargoType(name=n) for n in cargo_types])
 
     db.commit()
-    print("[ChainShield] Seed complete. Admin: bhavik@gmail.com / Chain@123")
+    print("[ChainShield] Seed complete.")
+    print("[ChainShield] Demo accounts: admin@chainshield.com / demo1234  |  manager@chainshield.com / demo1234")
+    print("[ChainShield] Also: captain / pilot / driver / loco @chainshield.com  (password: demo1234)")
+
+
+def _ensure_demo_accounts(db: Session):
+    """Upsert demo accounts so they always exist, even on a previously-seeded DB."""
+    changed = False
+    for u in DEMO_USERS:
+        existing = db.query(models.User).filter(models.User.email == u["email"]).first()
+        if not existing:
+            user = models.User(
+                id=f"USR-{uuid.uuid4().hex[:8].upper()}",
+                name=u["name"],
+                email=u["email"],
+                password_hash=hash_password(u["password"]),
+                role=u["role"],
+                operator_type=u["operator_type"],
+                company=u["company"],
+                active=True,
+                chat_number=_gen_chat_number(db),
+            )
+            db.add(user)
+            changed = True
+            print(f"[ChainShield] Created missing demo account: {u['email']}")
+    if changed:
+        db.commit()
